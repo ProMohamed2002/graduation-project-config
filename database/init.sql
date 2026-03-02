@@ -1,4 +1,4 @@
--- Pharmacy → NiFi → Kafka → Flink → DB
+-- PostgreSQL → NiFi → Kafka → Flink → ClickHouse
 CREATE TABLE pharmacies (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100),
