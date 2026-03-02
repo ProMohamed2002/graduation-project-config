@@ -34,6 +34,7 @@ services:
         - JOB_MANAGER_RPC_ADDRESS=flink-jobmanager
       depends_on:
         - kafka
+        - clickhouse
   
     flink-taskmanager:
       image: flink:1.18.1
@@ -55,6 +56,16 @@ services:
       - "5432:5432"
     volumes:
       - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    restart: unless-stopped
+    
+  clickhouse:
+    image: clickhouse/clickhouse-server:23
+    container_name: clickhouse
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - ./clickhouse_data:/var/lib/clickhouse
     restart: unless-stopped
 
   nifi:
