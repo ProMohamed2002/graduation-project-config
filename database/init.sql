@@ -1,3 +1,4 @@
+-- Pharmacy → NiFi → Kafka → Flink → DB
 CREATE TABLE pharmacies (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100),
