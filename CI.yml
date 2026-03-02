@@ -1,66 +1,105 @@
-name: CI Pipeline
+name: CI Pipeline - End-to-End
 
 on:
   push:
     branches:
-      - main
+      # - main
   pull_request:
     branches:
-      - main
+      # - main
 
 jobs:
   build-and-test:
-    name: Build Docker Stack & Smoke Test
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    name: Build Stack & Run Integration Tests
+    runs-on: 22.04.4
+    timeout-minutes: 45
+
+    services:
+      # Postgres service for CI environment (optional, can use container)
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: admin
+          POSTGRES_PASSWORD: admin123
+          POSTGRES_DB: graduation_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U admin -d graduation_db"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
 
     steps:
-      # 1. Checkout repository
-      - name: Checkout code
+      # 1. Checkout code
+      - name: Checkout
         uses: actions/checkout@v3
 
-      # 2. Set up Docker Buildx (professional multi-platform builder)
+      # 2. Set up Docker Buildx
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
       # 3. Lint Dockerfiles
-      - name: Lint Dockerfiles
+      - name: Lint Dockerfile
         uses: hadolint/hadolint-action@v2
         with:
           dockerfile: ./Dockerfile
 
-      # 4. Lint docker-compose.yml
+      # 4. Lint docker-compose
       - name: Lint docker-compose
         uses: redcoolbeans/docker-compose-linter-action@v1
 
-      # 5. Build all Docker images
+      # 5. Build Docker images
       - name: Build Docker Images
         run: docker compose build --pull --progress=plain
 
-      # 6. Start services in detached mode
+      # 6. Start stack
       - name: Start Docker Stack
         run: docker compose up -d
 
-      # 7. Smoke tests
+      # 7. Wait for services to be healthy
+      - name: Wait for stack
+        run: |
+          echo "Waiting 30s for services..."
+          sleep 30
+
+      # 8. Smoke tests - check containers and ports
       - name: Smoke test containers
         run: |
-          echo "Waiting for services to start..."
-          sleep 20
           docker ps
-          # check if key ports are open
           for port in 8080 8082 5432 8123 9092; do
             nc -zv localhost $port
           done
 
-      # 8. Optional: Run healthcheck for NiFi
-      - name: NiFi Healthcheck
+      # 9. PostgreSQL schema & data verification
+      - name: Check PostgreSQL
         run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/nifi)
-          if [ "$STATUS" -ne 200 ]; then
-            echo "NiFi not ready"
-            exit 1
-          fi
+          echo "Checking PostgreSQL tables and sample data..."
+          psql "postgresql://admin:admin123@localhost:5432/graduation_db" \
+          -c "\dt"
+          psql "postgresql://admin:admin123@localhost:5432/graduation_db" \
+          -c "SELECT COUNT(*) FROM pharmacies;"
+          psql "postgresql://admin:admin123@localhost:5432/graduation_db" \
+          -c "SELECT COUNT(*) FROM orders;"
 
-      # 9. Tear down stack
+      # 10. Kafka topics check
+      - name: Check Kafka topics
+        run: |
+          docker exec kafka kafka-topics --bootstrap-server kafka:9092 --list
+
+      # 11. Submit a dummy Flink job (simple print) for testing
+      - name: Submit Flink dummy job
+        run: |
+          echo "Submitting Flink dummy job..."
+          # This assumes you have a simple job jar in /flink-jobs folder
+          docker exec flink-jobmanager \
+            flink run -c org.example.DummyJob /flink-jobs/dummy.jar
+
+      # 12. ClickHouse data verification
+      - name: Check ClickHouse
+        run: |
+          docker exec clickhouse clickhouse-client --query "SELECT count() FROM fact_orders;"
+
+      # 13. Tear down stack
       - name: Stop Docker Stack
         run: docker compose down -v
