@@ -2,8 +2,11 @@ FROM apache/nifi:1.23.2
 
 USER root
 
-# Install curl 
-RUN apt-get update && apt-get install -y curl
+RUN apt-get update && apt-get install -y curl wget
+
+# PostgreSQL JDBC Driver
+RUN wget https://jdbc.postgresql.org/download/postgresql-42.6.0.jar \
+    -P /opt/nifi/nifi-current/lib/
 
 USER nifi
 
